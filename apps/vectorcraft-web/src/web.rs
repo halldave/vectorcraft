@@ -63,8 +63,11 @@ pub fn start() {
     // `?host=parent`: a same-origin page framing VectorCraft (or the parent on the origin
     // `?host_origin=` names) opens documents in it and stores what it saves (`crate::host`).
     // Installed first, so a page without a canvas still reports the failure.
+    // The parent percent-encodes the origin (`encodeURIComponent`); a value that won't decode is
+    // passed on as written, and `Bridge::new` refuses it if it isn't an origin.
+    let host_origin = query_param("host_origin").map(|raw| crate::bridge::percent_decode(&raw).unwrap_or(raw));
     if query_param("host").as_deref() == Some("parent")
-        && let Some(bridge) = crate::host::Bridge::new(query_param("host_origin").as_deref())
+        && let Some(bridge) = crate::host::Bridge::new(host_origin.as_deref())
     {
         bridge.install();
     }

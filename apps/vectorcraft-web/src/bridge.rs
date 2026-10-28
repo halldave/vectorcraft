@@ -45,6 +45,29 @@ pub fn canonical_origin(s: &str) -> Option<String> {
     }
 }
 
+/// `s` with its `%XX` escapes decoded, as `encodeURIComponent` writes an origin into a query
+/// string (`https%3A%2F%2Ffiles.example`). `None` when an escape isn't two hex digits or the
+/// result isn't UTF-8; `+` is left alone, as `encodeURIComponent` never writes it.
+pub fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = bytes.get(i + 1..i + 3)?;
+            if !hex.iter().all(u8::is_ascii_hexdigit) {
+                return None;
+            }
+            out.push(u8::from_str_radix(std::str::from_utf8(hex).ok()?, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 /// True for a URL origin: `http(s)://host[:port]` with no path, query, fragment or credentials,
 /// and only in forms whose browser serialisation [`canonical_origin`] can produce: an ASCII host
 /// (an IDN must be given in punycode, `xn--…`), and a numeric host only as a dotted-decimal IPv4.
@@ -189,6 +212,19 @@ mod tests {
             ("  https://Files.Example:443  ", "https://files.example"),
         ] {
             assert_eq!(target_origin(OWN, None, Some(given)).as_deref(), Some(stored), "{given}");
+        }
+    }
+
+    #[test]
+    fn host_origin_query_value_is_percent_decoded_before_the_check() {
+        assert_eq!(percent_decode("https%3A%2F%2Ffiles.example%3A8443").as_deref(), Some("https://files.example:8443"));
+        assert_eq!(percent_decode("https://files.example").as_deref(), Some("https://files.example"));
+        assert_eq!(percent_decode("https%3A%2F%2Fb%C3%BCcher.example").as_deref(), Some("https://b\u{fc}cher.example"));
+        let decoded = percent_decode("https%3A%2F%2FFiles.Example%3A443").unwrap();
+        assert_eq!(target_origin(OWN, None, Some(&decoded)).as_deref(), Some("https://files.example"));
+        // Malformed escapes, a sign where a hex digit belongs, and bytes that aren't UTF-8 don't decode.
+        for bad in ["%zz", "abc%2", "%+1", "%FF"] {
+            assert_eq!(percent_decode(bad), None, "{bad}");
         }
     }
 
