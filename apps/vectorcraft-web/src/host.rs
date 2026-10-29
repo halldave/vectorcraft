@@ -22,7 +22,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use vectorcraft_ui_egui::VectorcraftApp;
+use vectorcraft_ui_egui::{SaveKind, VectorcraftApp};
 use wasm_bindgen::JsCast as _;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
@@ -119,10 +119,9 @@ impl Bridge {
         }
     }
 
-    fn post_save(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+    fn post_save(&self, name: &str, bytes: &[u8], kind: SaveKind) -> Result<(), String> {
         let buffer = js_sys::Uint8Array::from(bytes).buffer();
-        let document = [vectorcraft_format::EXTENSION, vectorcraft_format::LEGACY_EXTENSION].iter().any(|ext| name.ends_with(&format!(".{ext}")));
-        let id = self.acks.borrow_mut().posted(name, document, js_sys::Date::now());
+        let id = self.acks.borrow_mut().posted(name, kind == SaveKind::Document, js_sys::Date::now());
         let sent = message(&[
             ("type", "vectorcraft:save".into()),
             ("id", JsValue::from_f64(id as f64)),
@@ -154,9 +153,9 @@ pub fn installed() -> Option<Bridge> {
 
 /// In host mode, hand a file that would be downloaded to the parent page: `None` outside host
 /// mode, else whether it was posted.
-pub fn deliver(name: &str, bytes: &[u8]) -> Option<Result<(), String>> {
+pub fn deliver(name: &str, bytes: &[u8], kind: SaveKind) -> Option<Result<(), String>> {
     let bridge = BRIDGE.with(|b| b.borrow().clone())?;
-    Some(bridge.post_save(name, bytes))
+    Some(bridge.post_save(name, bytes, kind))
 }
 
 /// After each frame: tell the parent when unsaved changes appear or go away (held dirty while a

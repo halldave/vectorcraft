@@ -14,7 +14,7 @@ use vectorcraft_ui_egui::i18n;
 use vectorcraft_ui_egui::place::{DropTarget, PlaceArrival, PlaceInbox};
 use vectorcraft_ui_egui::print::{PrintJob, PrintService, Printer};
 use vectorcraft_ui_egui::stylus::StylusFeed;
-use vectorcraft_ui_egui::{Services, VectorcraftApp};
+use vectorcraft_ui_egui::{SaveKind, Services, VectorcraftApp};
 use wasm_bindgen::JsCast as _;
 
 use crate::locks::WebLocks;
@@ -499,7 +499,9 @@ fn services(inbox: Inbox, place_inbox: PlaceInbox, ctx: egui::Context, locks: Op
         // Sample Color from Screen: the browser's EyeDropper, where it has one.
         screen_color,
         // A download that couldn't be started fails the save or export it is for (#1693).
-        download: Some(Box::new(|name: &str, bytes: &[u8]| download(name, bytes).inspect_err(|e| log::error!("download of {name} failed: {e}")))),
+        download: Some(Box::new(|name: &str, bytes: &[u8], kind: SaveKind| {
+            download(name, bytes, kind).inspect_err(|e| log::error!("download of {name} failed: {e}"))
+        })),
         inbox: Some(inbox),
         recovery_store: Some(Arc::new(BrowserStore { locks })),
         // File → Print: the browser's print dialog.
@@ -597,11 +599,11 @@ impl RecoveryStore for BrowserStore {
 }
 
 /// Trigger a browser download of `bytes` named after the last component of `path`.
-fn download(path: &str, bytes: &[u8]) -> Result<(), String> {
+fn download(path: &str, bytes: &[u8], kind: SaveKind) -> Result<(), String> {
     if crate::api::capture(path, bytes) {
         return Ok(());
     }
-    if let Some(posted) = crate::host::deliver(&fileio::file_name(path), bytes) {
+    if let Some(posted) = crate::host::deliver(&fileio::file_name(path), bytes, kind) {
         return posted;
     }
     let js = |e: wasm_bindgen::JsValue| format!("{e:?}");
